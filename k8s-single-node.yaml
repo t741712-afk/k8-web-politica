@@ -1,0 +1,312 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Clúster k3s de 2 nodos (master + worker) en AWS EC2.
+  Despliega VPC, subnet pública, security group, y dos instancias EC2.
+  El worker se une automáticamente al master usando un token estático.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: k3
+    Description: Key Pair para acceso SSH.
+
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues: [t3.small, t3.medium, t3.large]
+    Description: Tipo de instancia EC2.
+
+  AllowedSSHCidr:
+    Type: String
+    Default: "0.0.0.0/0"
+    Description: CIDR permitido para SSH.
+
+  K3sToken:
+    Type: String
+    Default: "ppf-k3s-cluster-token-2027"
+    Description: Token compartido entre master y worker para unirse al clúster.
+    NoEcho: true
+
+  LatestAL2023AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+
+  # ── VPC & Networking ──────────────────────────────────────────────────────
+
+  K3sVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: k3s-vpc
+
+  K3sInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: k3s-igw
+
+  K3sVPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref K3sVPC
+      InternetGatewayId: !Ref K3sInternetGateway
+
+  K3sPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref K3sVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: k3s-public-subnet
+
+  K3sRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref K3sVPC
+      Tags:
+        - Key: Name
+          Value: k3s-rt
+
+  K3sDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: K3sVPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref K3sRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref K3sInternetGateway
+
+  K3sSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref K3sPublicSubnet
+      RouteTableId: !Ref K3sRouteTable
+
+  # ── Security Group ────────────────────────────────────────────────────────
+
+  K3sSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: k3s cluster security group
+      VpcId: !Ref K3sVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedSSHCidr
+        - IpProtocol: tcp
+          FromPort: 6443
+          ToPort: 6443
+          CidrIp: !Ref AllowedSSHCidr
+        - IpProtocol: tcp
+          FromPort: 30000
+          ToPort: 32767
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: Name
+          Value: k3s-sg
+
+  # Permite comunicación interna libre entre los nodos del clúster
+  K3sIntraClusterIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref K3sSecurityGroup
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !Ref K3sSecurityGroup
+
+  # ── MASTER NODE ───────────────────────────────────────────────────────────
+
+  K3sMaster:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAL2023AmiId
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref K3sPublicSubnet
+      SecurityGroupIds:
+        - !Ref K3sSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          exec > >(tee /var/log/k3s-install.log | logger -t k3s-install) 2>&1
+
+          echo "==> Updating system packages"
+          dnf update -y --allowerasing || true
+
+          echo "==> Installing utilities"
+          dnf install -y --allowerasing tar git bash-completion docker
+
+          echo "==> Installing k3s master"
+          curl -sfL https://get.k3s.io | K3S_TOKEN="${K3sToken}" sh -s - \
+            --write-kubeconfig-mode 644 \
+            --disable traefik
+
+          echo "==> Waiting for k3s to be ready"
+          until kubectl get nodes 2>/dev/null | grep -q " Ready"; do
+            sleep 5
+          done
+
+          echo "==> kubectl aliases"
+          kubectl completion bash > /etc/bash_completion.d/kubectl
+          echo 'alias k=kubectl' >> /etc/bashrc
+          echo 'complete -F __start_kubectl k' >> /etc/bashrc
+
+          echo "==> Kubeconfig for ec2-user"
+          mkdir -p /home/ec2-user/.kube
+          cp /etc/rancher/k3s/k3s.yaml /home/ec2-user/.kube/config
+          sed -i "s/127.0.0.1/$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/g" \
+            /home/ec2-user/.kube/config
+          chown -R ec2-user:ec2-user /home/ec2-user/.kube
+
+          echo "==> Enabling Docker"
+          systemctl enable --now docker
+          usermod -aG docker ec2-user
+
+          echo "==> Cloning app repo"
+          git clone https://github.com/t741712-afk/k8-web-politica.git /home/ec2-user/partido-app
+          chown -R ec2-user:ec2-user /home/ec2-user/partido-app
+          chmod +x /home/ec2-user/partido-app/deploy.sh
+
+          echo "==> Deploying PPF app"
+          /home/ec2-user/partido-app/deploy.sh
+
+          echo "==> Master ready"
+      Tags:
+        - Key: Name
+          Value: k3s-master
+        - Key: Role
+          Value: master
+
+  K3sMasterEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref K3sMaster
+      Tags:
+        - Key: Name
+          Value: k3s-master-eip
+
+  # ── WORKER NODE ───────────────────────────────────────────────────────────
+
+  K3sWorker:
+    Type: AWS::EC2::Instance
+    DependsOn: K3sMaster
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAL2023AmiId
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref K3sPublicSubnet
+      SecurityGroupIds:
+        - !Ref K3sSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            set -euo pipefail
+            exec > >(tee /var/log/k3s-worker-install.log | logger -t k3s-worker) 2>&1
+
+            echo "==> Updating system packages"
+            dnf update -y --allowerasing || true
+
+            echo "==> Installing utilities"
+            dnf install -y --allowerasing tar git bash-completion
+
+            echo "==> Waiting for master API to be reachable"
+            until curl -sk https://${MasterPrivateIP}:6443/ping | grep -q "ok"; do
+              echo "Master not ready yet, retrying in 10s..."
+              sleep 10
+            done
+
+            echo "==> Joining k3s cluster as worker"
+            curl -sfL https://get.k3s.io | \
+              K3S_URL="https://${MasterPrivateIP}:6443" \
+              K3S_TOKEN="${K3sToken}" \
+              sh -
+
+            echo "==> Worker joined the cluster"
+          - MasterPrivateIP: !GetAtt K3sMaster.PrivateIp
+      Tags:
+        - Key: Name
+          Value: k3s-worker
+        - Key: Role
+          Value: worker
+
+  K3sWorkerEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref K3sWorker
+      Tags:
+        - Key: Name
+          Value: k3s-worker-eip
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  MasterPublicIP:
+    Description: IP pública del nodo master
+    Value: !Ref K3sMasterEIP
+
+  WorkerPublicIP:
+    Description: IP pública del nodo worker
+    Value: !Ref K3sWorkerEIP
+
+  SSHMaster:
+    Description: SSH al master
+    Value: !Sub "ssh -i k3.pem ec2-user@${K3sMasterEIP}"
+
+  SSHWorker:
+    Description: SSH al worker
+    Value: !Sub "ssh -i k3.pem ec2-user@${K3sWorkerEIP}"
+
+  WebURL:
+    Description: URL de la web PPF
+    Value: !Sub "http://${K3sMasterEIP}:30080/"
+
+  AdminURL:
+    Description: URL del panel de administración
+    Value: !Sub "http://${K3sMasterEIP}:30080/admin"
+
+  pgAdminURL:
+    Description: URL de pgAdmin
+    Value: !Sub "http://${K3sMasterEIP}:30081/"
