@@ -1,4 +1,5 @@
 ---
+# Ingress para admin y web (con rewrite)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -12,7 +13,6 @@ spec:
   rules:
     - http:
         paths:
-          # Admin panel → strip /admin prefix
           - path: /admin(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
@@ -20,19 +20,32 @@ spec:
                 name: ppf-admin
                 port:
                   number: 4000
-          # pgAdmin → keeps /pgadmin prefix (SCRIPT_NAME handles it)
-          - path: /pgadmin(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: pgadmin
-                port:
-                  number: 80
-          # Main web PPF
           - path: /()(.*)
             pathType: ImplementationSpecific
             backend:
               service:
                 name: ppf-frontend
+                port:
+                  number: 80
+
+---
+# Ingress separado para pgAdmin (sin rewrite, envía la ruta completa)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pgadmin-ingress
+  namespace: ppf
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /pgadmin
+            pathType: Prefix
+            backend:
+              service:
+                name: pgadmin
                 port:
                   number: 80
