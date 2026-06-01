@@ -1,0 +1,86 @@
+---
+# ── ppf-ai-backend ────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ppf-ai-backend
+  namespace: ppf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ppf-ai-backend
+  template:
+    metadata:
+      labels:
+        app: ppf-ai-backend
+    spec:
+      containers:
+        - name: ppf-ai-backend
+          image: ppf-ai-backend:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8007
+          envFrom:
+            - secretRef:
+                name: ppf-ai-secrets
+          env:
+            - name: UPLOAD_DIR
+              value: /data/uploads
+            - name: FILE_SECURITY_REGION
+              value: eu-central-1
+          volumeMounts:
+            - name: uploads
+              mountPath: /data/uploads
+      volumes:
+        - name: uploads
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ppf-ai-backend
+  namespace: ppf
+spec:
+  selector:
+    app: ppf-ai-backend
+  ports:
+    - port: 8007
+      targetPort: 8007
+  type: ClusterIP
+---
+# ── ppf-ai-frontend ───────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ppf-ai-frontend
+  namespace: ppf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ppf-ai-frontend
+  template:
+    metadata:
+      labels:
+        app: ppf-ai-frontend
+    spec:
+      containers:
+        - name: ppf-ai-frontend
+          image: ppf-ai-frontend:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ppf-ai-frontend
+  namespace: ppf
+spec:
+  selector:
+    app: ppf-ai-frontend
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP

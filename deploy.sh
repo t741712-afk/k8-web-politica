@@ -9,14 +9,18 @@ sudo systemctl enable --now docker
 sudo usermod -aG docker ec2-user
 
 echo "==> Construyendo imágenes..."
-sudo docker build -t ppf-backend:latest  "$REPO_DIR/backend"
-sudo docker build -t ppf-frontend:latest "$REPO_DIR/frontend"
-sudo docker build -t ppf-admin:latest    "$REPO_DIR/admin"
+sudo docker build -t ppf-backend:latest     "$REPO_DIR/backend"
+sudo docker build -t ppf-frontend:latest    "$REPO_DIR/frontend"
+sudo docker build -t ppf-admin:latest       "$REPO_DIR/admin"
+sudo docker build -t ppf-ai-backend:latest  "$REPO_DIR/ai-backend"
+sudo docker build -t ppf-ai-frontend:latest "$REPO_DIR/ai-frontend"
 
 echo "==> Importando imágenes en k3s..."
-sudo docker save ppf-backend:latest  | sudo k3s ctr images import -
-sudo docker save ppf-frontend:latest | sudo k3s ctr images import -
-sudo docker save ppf-admin:latest    | sudo k3s ctr images import -
+sudo docker save ppf-backend:latest     | sudo k3s ctr images import -
+sudo docker save ppf-frontend:latest    | sudo k3s ctr images import -
+sudo docker save ppf-admin:latest       | sudo k3s ctr images import -
+sudo docker save ppf-ai-backend:latest  | sudo k3s ctr images import -
+sudo docker save ppf-ai-frontend:latest | sudo k3s ctr images import -
 
 echo "==> Instalando Helm..."
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
@@ -35,12 +39,15 @@ echo "==> Desplegando app PPF..."
 kubectl apply -f "$REPO_DIR/k8s/ppf.yaml"
 kubectl apply -f "$REPO_DIR/k8s/admin.yaml"
 kubectl apply -f "$REPO_DIR/k8s/pgadmin.yaml"
+kubectl apply -f "$REPO_DIR/k8s/ai.yaml"
 kubectl apply -f "$REPO_DIR/k8s/ingress.yaml"
 
 echo "==> Esperando pods..."
-kubectl rollout status deployment/ppf-backend  -n ppf --timeout=120s
-kubectl rollout status deployment/ppf-frontend -n ppf --timeout=120s
-kubectl rollout status deployment/ppf-admin    -n ppf --timeout=120s
+kubectl rollout status deployment/ppf-backend     -n ppf --timeout=120s
+kubectl rollout status deployment/ppf-frontend    -n ppf --timeout=120s
+kubectl rollout status deployment/ppf-admin       -n ppf --timeout=120s
+kubectl rollout status deployment/ppf-ai-backend  -n ppf --timeout=180s || true
+kubectl rollout status deployment/ppf-ai-frontend -n ppf --timeout=120s || true
 
 echo "==> Desplegando Trend Vision One Container Security..."
 helm upgrade --install trendmicro \

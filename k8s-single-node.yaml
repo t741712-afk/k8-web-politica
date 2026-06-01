@@ -271,9 +271,11 @@ Resources:
 
             echo "==> Cloning repo and building images"
             git clone https://github.com/t741712-afk/k8-web-politica.git /home/ec2-user/partido-app
-            docker build -t ppf-backend:latest  /home/ec2-user/partido-app/backend
-            docker build -t ppf-frontend:latest /home/ec2-user/partido-app/frontend
-            docker build -t ppf-admin:latest    /home/ec2-user/partido-app/admin
+            docker build -t ppf-backend:latest     /home/ec2-user/partido-app/backend
+            docker build -t ppf-frontend:latest    /home/ec2-user/partido-app/frontend
+            docker build -t ppf-admin:latest       /home/ec2-user/partido-app/admin
+            docker build -t ppf-ai-backend:latest  /home/ec2-user/partido-app/ai-backend
+            docker build -t ppf-ai-frontend:latest /home/ec2-user/partido-app/ai-frontend
 
             echo "==> Waiting for master API to be reachable"
             until curl -sk --max-time 5 https://${MasterPrivateIP}:6443/healthz; do
@@ -288,9 +290,11 @@ Resources:
               sh -
 
             echo "==> Importing images into k3s"
-            docker save ppf-backend:latest  | k3s ctr images import -
-            docker save ppf-frontend:latest | k3s ctr images import -
-            docker save ppf-admin:latest    | k3s ctr images import -
+            docker save ppf-backend:latest     | k3s ctr images import -
+            docker save ppf-frontend:latest    | k3s ctr images import -
+            docker save ppf-admin:latest       | k3s ctr images import -
+            docker save ppf-ai-backend:latest  | k3s ctr images import -
+            docker save ppf-ai-frontend:latest | k3s ctr images import -
 
             echo "==> Worker-1 ready"
           - MasterPrivateIP: !GetAtt K3sMaster.PrivateIp
@@ -345,9 +349,11 @@ Resources:
 
             echo "==> Cloning repo and building images"
             git clone https://github.com/t741712-afk/k8-web-politica.git /home/ec2-user/partido-app
-            docker build -t ppf-backend:latest  /home/ec2-user/partido-app/backend
-            docker build -t ppf-frontend:latest /home/ec2-user/partido-app/frontend
-            docker build -t ppf-admin:latest    /home/ec2-user/partido-app/admin
+            docker build -t ppf-backend:latest     /home/ec2-user/partido-app/backend
+            docker build -t ppf-frontend:latest    /home/ec2-user/partido-app/frontend
+            docker build -t ppf-admin:latest       /home/ec2-user/partido-app/admin
+            docker build -t ppf-ai-backend:latest  /home/ec2-user/partido-app/ai-backend
+            docker build -t ppf-ai-frontend:latest /home/ec2-user/partido-app/ai-frontend
 
             echo "==> Waiting for master API to be reachable"
             until curl -sk --max-time 5 https://${MasterPrivateIP}:6443/healthz; do
@@ -362,9 +368,11 @@ Resources:
               sh -
 
             echo "==> Importing images into k3s"
-            docker save ppf-backend:latest  | k3s ctr images import -
-            docker save ppf-frontend:latest | k3s ctr images import -
-            docker save ppf-admin:latest    | k3s ctr images import -
+            docker save ppf-backend:latest     | k3s ctr images import -
+            docker save ppf-frontend:latest    | k3s ctr images import -
+            docker save ppf-admin:latest       | k3s ctr images import -
+            docker save ppf-ai-backend:latest  | k3s ctr images import -
+            docker save ppf-ai-frontend:latest | k3s ctr images import -
 
             echo "==> Worker-2 ready"
           - MasterPrivateIP: !GetAtt K3sMaster.PrivateIp

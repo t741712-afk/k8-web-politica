@@ -20,6 +20,13 @@ spec:
                 name: ppf-admin
                 port:
                   number: 4000
+          - path: /asistente(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: ppf-ai-frontend
+                port:
+                  number: 80
           - path: /()(.*)
             pathType: ImplementationSpecific
             backend:
