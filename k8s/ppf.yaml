@@ -141,9 +141,7 @@ metadata:
   name: ppf-frontend
   namespace: ppf
 spec:
-  type: NodePort
   selector:
     app: ppf-frontend
   ports:
     - port: 80
-      nodePort: 30080

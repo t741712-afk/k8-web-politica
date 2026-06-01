@@ -1,0 +1,38 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ppf-ingress
+  namespace: ppf
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          # Admin panel → strip /admin prefix
+          - path: /admin(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: ppf-admin
+                port:
+                  number: 4000
+          # pgAdmin → keeps /pgadmin prefix (SCRIPT_NAME handles it)
+          - path: /pgadmin(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: pgadmin
+                port:
+                  number: 80
+          # Main web PPF
+          - path: /()(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: ppf-frontend
+                port:
+                  number: 80
