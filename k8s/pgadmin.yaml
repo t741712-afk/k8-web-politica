@@ -23,7 +23,7 @@ spec:
             - name: PGADMIN_DEFAULT_PASSWORD
               value: ppf2027
             - name: SCRIPT_NAME
-              value: /pgadmin
+              value: ""
           ports:
             - containerPort: 80
           resources:
