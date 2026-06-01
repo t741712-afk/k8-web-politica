@@ -90,18 +90,20 @@ app.post('/api/newsletter', async (req, res) => {
 // GET /api/news
 app.get('/api/news', (_, res) => {
   res.json([
-    { icon: '📢', tag: 'Nota de prensa', title: 'El PPF presenta su plan de choque contra la pobreza energética', excerpt: 'Ana Morales ha presentado hoy un paquete de medidas urgentes para garantizar el suministro básico a las familias más vulnerables.', date: '28 mayo 2026' },
-    { icon: '🗳️', tag: 'Electoral', title: 'El PPF supera el 18% en las últimas encuestas nacionales', excerpt: 'Los sondeos de mayo sitúan al Partido por el Futuro como tercera fuerza política del país con tendencia al alza.', date: '22 mayo 2026' },
-    { icon: '🤝', tag: 'Acuerdos', title: 'Firmado el acuerdo con sindicatos para la reforma laboral progresista', excerpt: 'El acuerdo incluye la reducción a 35 horas, subida del SMI y mayor protección ante despidos improcedentes.', date: '15 mayo 2026' },
+    { icon: '🗳️', tag: 'Elecciones 2027', title: 'El PPF registra su candidatura para las elecciones generales de mayo de 2027', excerpt: 'Ana Morales encabeza la lista nacional del PPF. El partido concurre por primera vez con presencia en las 52 circunscripciones.', date: '10 enero 2027' },
+    { icon: '📊', tag: 'Encuestas', title: 'El PPF escala al 21% en el barómetro de enero, su mejor resultado histórico', excerpt: 'El ascenso se consolida a cuatro meses de las elecciones. Los analistas sitúan al PPF como llave del próximo gobierno.', date: '18 enero 2027' },
+    { icon: '📢', tag: 'Programa electoral', title: 'Presentado el programa electoral completo: 180 medidas para transformar España', excerpt: 'Economía, sanidad, vivienda y transición ecológica centran las propuestas del PPF de cara a las generales de mayo de 2027.', date: '25 enero 2027' },
   ]);
 });
 
 // GET /api/events
 app.get('/api/events', (_, res) => {
   res.json([
-    { day: '14', month: 'JUN', title: 'Mitin central en Madrid — "España que queremos"', location: '📍 Palacio de Deportes, Madrid · 19:00h', badge: 'Gratuito' },
-    { day: '21', month: 'JUN', title: 'Congreso Federal extraordinario del PPF', location: '📍 Palau Sant Jordi, Barcelona · 10:00h', badge: 'Afiliados' },
-    { day: '05', month: 'JUL', title: 'Jornada de puertas abiertas en sedes provinciales', location: '📍 Todas las provincias · 11:00h', badge: 'Gratuito' },
+    { day: '15', month: 'FEB', title: 'Arranque de campaña — Mitin de apertura en Madrid', location: '📍 Palacio de los Deportes, Madrid · 19:00h', badge: 'Gratuito' },
+    { day: '01', month: 'MAR', title: 'Gran mitin en Barcelona — "El cambio empieza aquí"', location: '📍 Palau Sant Jordi, Barcelona · 18:30h', badge: 'Gratuito' },
+    { day: '22', month: 'MAR', title: 'Debate electoral en televisión nacional', location: '📍 TVE · Retransmisión en directo · 22:00h', badge: 'En directo' },
+    { day: '10', month: 'ABR', title: 'Jornada de puertas abiertas en sedes provinciales', location: '📍 Todas las provincias · 11:00h', badge: 'Gratuito' },
+    { day: 'MAY', month: '2027', title: '🗳️ Elecciones Generales — ¡A votar!', location: '📍 Colegios electorales de toda España', badge: 'Día D' },
   ]);
 });
 
