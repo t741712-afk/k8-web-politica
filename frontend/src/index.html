@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Partido por el Futuro — PPF</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav id="navbar">
+    <div class="nav-inner">
+      <a class="logo" href="#home">⬡ PPF</a>
+      <ul class="nav-links">
+        <li><a href="#sobre-nosotros">Nosotros</a></li>
+        <li><a href="#programa">Programa</a></li>
+        <li><a href="#noticias">Noticias</a></li>
+        <li><a href="#agenda">Agenda</a></li>
+        <li><a href="#afiliacion" class="btn-nav">Afíliate</a></li>
+      </ul>
+      <button class="hamburger" id="hamburger">&#9776;</button>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section id="home" class="hero">
+    <div class="hero-content">
+      <span class="hero-tag">Elecciones 2026</span>
+      <h1>Un futuro<br/><span>para todos</span></h1>
+      <p>El Partido por el Futuro nace de la ciudadanía,<br/>para transformar España con justicia, progreso y democracia real.</p>
+      <div class="hero-cta">
+        <a href="#afiliacion" class="btn-primary">Únete al movimiento</a>
+        <a href="#programa" class="btn-outline">Ver programa</a>
+      </div>
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-num" id="counter-affiliates">0</span>
+          <span class="stat-label">Afiliados</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num">47</span>
+          <span class="stat-label">Provincias</span>
+        </div>
+        <div class="stat">
+          <span class="stat-num">12</span>
+          <span class="stat-label">Años luchando</span>
+        </div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="circle c1"></div>
+      <div class="circle c2"></div>
+      <div class="circle c3"></div>
+    </div>
+  </section>
+
+  <!-- SOBRE NOSOTROS -->
+  <section id="sobre-nosotros" class="section">
+    <div class="container">
+      <span class="section-tag">Quiénes somos</span>
+      <h2>Un partido construido<br/>desde abajo</h2>
+      <p class="section-sub">Fundado en 2014 por un grupo de ciudadanos comprometidos, el PPF defiende los valores de la igualdad, la transparencia y el bien común.</p>
+      <div class="values-grid">
+        <div class="value-card">
+          <div class="value-icon">⚖️</div>
+          <h3>Justicia Social</h3>
+          <p>Una sociedad justa donde nadie quede atrás. Políticas redistributivas y acceso universal a servicios básicos.</p>
+        </div>
+        <div class="value-card">
+          <div class="value-icon">🌿</div>
+          <h3>Sostenibilidad</h3>
+          <p>Transición ecológica real. Energías renovables, economía circular y protección del territorio.</p>
+        </div>
+        <div class="value-card">
+          <div class="value-icon">🏛️</div>
+          <h3>Democracia Real</h3>
+          <p>Transparencia absoluta, rendición de cuentas y participación ciudadana en cada decisión.</p>
+        </div>
+        <div class="value-card">
+          <div class="value-icon">📚</div>
+          <h3>Educación</h3>
+          <p>Inversión máxima en educación pública, gratuita y de calidad desde la infancia hasta la universidad.</p>
+        </div>
+      </div>
+
+      <div class="team-section">
+        <h3>Nuestro equipo directivo</h3>
+        <div class="team-grid">
+          <div class="team-card">
+            <div class="avatar" style="background:#3b5bdb">AM</div>
+            <strong>Ana Morales</strong>
+            <span>Secretaria General</span>
+          </div>
+          <div class="team-card">
+            <div class="avatar" style="background:#0ca678">CR</div>
+            <strong>Carlos Ruiz</strong>
+            <span>Portavoz Nacional</span>
+          </div>
+          <div class="team-card">
+            <div class="avatar" style="background:#e67700">LG</div>
+            <strong>Laura García</strong>
+            <span>Coordinadora Electoral</span>
+          </div>
+          <div class="team-card">
+            <div class="avatar" style="background:#c2255c">MS</div>
+            <strong>Miguel Sanz</strong>
+            <span>Responsable de Programa</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROGRAMA -->
+  <section id="programa" class="section section-alt">
+    <div class="container">
+      <span class="section-tag">Nuestras propuestas</span>
+      <h2>Un programa para<br/>transformar España</h2>
+      <div class="program-tabs">
+        <button class="tab-btn active" data-tab="economia">Economía</button>
+        <button class="tab-btn" data-tab="sanidad">Sanidad</button>
+        <button class="tab-btn" data-tab="educacion">Educación</button>
+        <button class="tab-btn" data-tab="medioambiente">Medio Ambiente</button>
+      </div>
+      <div class="tab-content active" id="tab-economia">
+        <ul class="proposals">
+          <li>✅ Salario mínimo de 1.500€ para 2027</li>
+          <li>✅ Reducción de la jornada laboral a 35 horas semanales</li>
+          <li>✅ Impuesto a las grandes fortunas y a las empresas con beneficios extraordinarios</li>
+          <li>✅ Plan de empleo joven con 200.000 plazas garantizadas</li>
+          <li>✅ Renta básica universal para familias en riesgo de exclusión</li>
+        </ul>
+      </div>
+      <div class="tab-content" id="tab-sanidad">
+        <ul class="proposals">
+          <li>✅ Contratación de 30.000 médicos y enfermeros en la sanidad pública</li>
+          <li>✅ Eliminación de las listas de espera en menos de 2 años</li>
+          <li>✅ Salud mental gratuita en atención primaria</li>
+          <li>✅ Medicamentos esenciales al 0% de copago</li>
+          <li>✅ Red nacional de residencias públicas dignas</li>
+        </ul>
+      </div>
+      <div class="tab-content" id="tab-educacion">
+        <ul class="proposals">
+          <li>✅ Universidad pública gratuita para rentas bajas y medias</li>
+          <li>✅ Ratio máximo de 20 alumnos por aula en primaria y secundaria</li>
+          <li>✅ Digitalización completa de los centros educativos</li>
+          <li>✅ Formación profesional gratuita y actualizada</li>
+          <li>✅ Beca comedor universal para todos los alumnos de primaria</li>
+        </ul>
+      </div>
+      <div class="tab-content" id="tab-medioambiente">
+        <ul class="proposals">
+          <li>✅ 100% energías renovables en el sector público para 2030</li>
+          <li>✅ Prohibición de nuevas prospecciones de combustibles fósiles</li>
+          <li>✅ Transporte público gratuito en ciudades de más de 100.000 habitantes</li>
+          <li>✅ Reforestación de 500.000 hectáreas en 4 años</li>
+          <li>✅ Impuesto al plástico de un solo uso</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- NOTICIAS -->
+  <section id="noticias" class="section">
+    <div class="container">
+      <span class="section-tag">Actualidad</span>
+      <h2>Últimas noticias</h2>
+      <div class="news-grid" id="news-grid">
+        <div class="news-skeleton"></div>
+        <div class="news-skeleton"></div>
+        <div class="news-skeleton"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AGENDA -->
+  <section id="agenda" class="section section-alt">
+    <div class="container">
+      <span class="section-tag">Próximos actos</span>
+      <h2>Agenda política</h2>
+      <div class="events-list" id="events-list">
+        <div class="event-skeleton"></div>
+        <div class="event-skeleton"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ENCUESTA -->
+  <section id="encuesta" class="section survey-section">
+    <div class="container">
+      <span class="section-tag">Tu opinión importa</span>
+      <h2>¿Cuál es tu mayor preocupación?</h2>
+      <div class="survey-options" id="survey-options">
+        <button class="survey-btn" data-option="economia">💶 Economía y empleo</button>
+        <button class="survey-btn" data-option="sanidad">🏥 Sanidad pública</button>
+        <button class="survey-btn" data-option="vivienda">🏠 Vivienda</button>
+        <button class="survey-btn" data-option="clima">🌍 Cambio climático</button>
+      </div>
+      <div class="survey-result" id="survey-result" style="display:none">
+        <p>¡Gracias por participar! Tendremos en cuenta tu voto.</p>
+        <div class="survey-bars" id="survey-bars"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AFILIACIÓN -->
+  <section id="afiliacion" class="section affiliate-section">
+    <div class="container">
+      <span class="section-tag">Únete</span>
+      <h2>Forma parte del cambio</h2>
+      <p class="section-sub">Afíliarte es gratis. Juntos somos más fuertes.</p>
+      <form id="affiliate-form" class="affiliate-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nombre *</label>
+            <input type="text" name="nombre" placeholder="Tu nombre" required />
+          </div>
+          <div class="form-group">
+            <label>Apellidos *</label>
+            <input type="text" name="apellidos" placeholder="Tus apellidos" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Email *</label>
+            <input type="email" name="email" placeholder="tu@email.com" required />
+          </div>
+          <div class="form-group">
+            <label>Provincia *</label>
+            <select name="provincia" required>
+              <option value="">Selecciona tu provincia</option>
+              <option>Madrid</option><option>Barcelona</option><option>Valencia</option>
+              <option>Sevilla</option><option>Bilbao</option><option>Zaragoza</option>
+              <option>Málaga</option><option>Murcia</option><option>Palma</option>
+              <option>Otra</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Mensaje (opcional)</label>
+          <textarea name="mensaje" rows="3" placeholder="¿Por qué quieres unirte al PPF?"></textarea>
+        </div>
+        <label class="checkbox-label">
+          <input type="checkbox" required />
+          Acepto la <a href="#">política de privacidad</a> del PPF
+        </label>
+        <button type="submit" class="btn-primary btn-full">Afiliarme ahora →</button>
+        <div id="form-msg" class="form-msg"></div>
+      </form>
+    </div>
+  </section>
+
+  <!-- NEWSLETTER -->
+  <section class="newsletter-section">
+    <div class="container">
+      <h3>Mantente informado</h3>
+      <p>Recibe en tu email las últimas noticias y convocatorias del PPF.</p>
+      <form id="newsletter-form" class="newsletter-form">
+        <input type="email" name="email" placeholder="tu@email.com" required />
+        <button type="submit" class="btn-primary">Suscribirme</button>
+        <div id="newsletter-msg" class="form-msg"></div>
+      </form>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <span class="logo">⬡ PPF</span>
+        <p>Partido por el Futuro<br/>Fundado en 2014 · España</p>
+      </div>
+      <div class="footer-links">
+        <h4>Partido</h4>
+        <a href="#sobre-nosotros">Sobre nosotros</a>
+        <a href="#programa">Programa</a>
+        <a href="#noticias">Noticias</a>
+        <a href="#agenda">Agenda</a>
+      </div>
+      <div class="footer-links">
+        <h4>Únete</h4>
+        <a href="#afiliacion">Afiliación</a>
+        <a href="#">Voluntariado</a>
+        <a href="#">Donaciones</a>
+        <a href="#">Contacto</a>
+      </div>
+      <div class="footer-links">
+        <h4>Legal</h4>
+        <a href="#">Política de privacidad</a>
+        <a href="#">Aviso legal</a>
+        <a href="#">Transparencia</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2026 Partido por el Futuro · Todos los derechos reservados · Partido ficticio creado con fines de demostración</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
