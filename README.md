@@ -1,6 +1,6 @@
 # K8WebPolitica — Entorno Kubernetes en AWS
 
-Web ficticia del **Partido por el Futuro (PPF)** desplegada en un clúster k3s sobre AWS EC2, protegida con Trend Vision One Container Security.
+Web ficticia del **Partido por el Futuro (PPF)** desplegada en un clúster k3s de 2 nodos sobre AWS EC2, protegida con Trend Vision One Container Security.
 
 ---
 
@@ -8,50 +8,58 @@ Web ficticia del **Partido por el Futuro (PPF)** desplegada en un clúster k3s s
 
 ```
 CloudFormation
-  └── EC2 t3.medium (k3s single-node)
-        ├── namespace: ingress-nginx
-        │     └── Nginx Ingress Controller (NodePort 30080)
-        ├── namespace: ppf
-        │     ├── ppf-frontend   → http://<IP>:30080/
-        │     ├── ppf-backend    → Node.js API (interno)
-        │     ├── ppf-admin      → http://<IP>:30080/admin
-        │     ├── postgres       → Base de datos (interno)
-        │     └── pgadmin        → http://<IP>:30081/
+  └── EC2 t3.medium — k3s MASTER (control-plane)
+  │     ├── namespace: ingress-nginx
+  │     │     └── Nginx Ingress Controller (NodePort 30080)
+  │     ├── namespace: ppf
+  │     │     ├── ppf-frontend   → http://<IP>:30080/
+  │     │     ├── ppf-backend    → Node.js API (interno)
+  │     │     ├── ppf-admin      → http://<IP>:30080/admin
+  │     │     ├── postgres       → Base de datos (interno)
+  │     │     └── pgadmin        → http://<IP>:30081/
+  │     └── namespace: trendmicro-system
+  │           └── Vision One Container Security
+  │                 └── trendmicro-scout (nodo master)
+  │
+  └── EC2 t3.medium — k3s WORKER
         └── namespace: trendmicro-system
-              └── Vision One Container Security (instalación manual)
+              └── trendmicro-scout (nodo worker)
 ```
+
+Los pods se distribuyen automáticamente entre master y worker. El worker construye las imágenes Docker localmente al arrancar y se une al clúster usando un token estático.
 
 ---
 
 ## Estructura del repositorio
 
 ```
-partido-app/
-  frontend/           Web pública PPF (HTML/CSS/JS + Nginx)
+k8-web-politica/
+  k8s-single-node.yaml   Plantilla CloudFormation (master + worker)
+  deploy.sh              Script de despliegue de la app en k3s
+  overrides.yaml         Configuración Vision One (sin token)
+  README.md              Esta guía
+  VISION-ONE-SETUP.md    Instalación manual de Vision One
+  frontend/              Web pública PPF (HTML/CSS/JS + Nginx)
     src/
       index.html
       style.css
       app.js
     Dockerfile
     nginx.conf
-  backend/            API REST Node.js + PostgreSQL
+  backend/               API REST Node.js + PostgreSQL
     server.js
     package.json
     Dockerfile
-  admin/              Panel de administración privado
+  admin/                 Panel de administración privado
     server.js
     package.json
     src/index.html
     Dockerfile
-  k8s/                Manifiestos Kubernetes
-    ppf.yaml          Deployments: frontend, backend, postgres
-    admin.yaml        Deployment: panel admin
-    pgadmin.yaml      Deployment: pgAdmin (NodePort 30081)
-    ingress.yaml      Ingress rules (web + admin)
-  deploy.sh           Script de despliegue completo
-  overrides.yaml      Configuración Vision One (sin token)
-  VISION-ONE-SETUP.md Guía instalación Vision One
-  k8s-single-node.yaml  Plantilla CloudFormation
+  k8s/                   Manifiestos Kubernetes
+    ppf.yaml             Deployments: frontend, backend, postgres
+    admin.yaml           Deployment: panel admin
+    pgadmin.yaml         Deployment: pgAdmin (NodePort 30081)
+    ingress.yaml         Ingress rules (web + admin)
 ```
 
 ---
@@ -59,13 +67,19 @@ partido-app/
 ## Despliegue desde cero
 
 ### Requisitos
-- AWS CLI configurado (`aws configure`)
-- Key Pair `k3` creado en AWS us-east-1
+- AWS CLI configurado (`aws configure`) con acceso a us-east-1
+- Key Pair `k3` creado en AWS us-east-1 (archivo `k3.pem` en local)
 - Cuenta GitHub con acceso al repo
 
 ---
 
 ### Paso 1 — Levantar la infraestructura con CloudFormation
+
+Sube la plantilla `k8s-single-node.yaml` desde la consola de AWS:
+
+> AWS Console → CloudFormation → Crear pila → Con recursos nuevos → Cargar archivo
+
+O desde CLI:
 
 ```bash
 aws cloudformation deploy \
@@ -75,39 +89,68 @@ aws cloudformation deploy \
   --parameter-overrides KeyPairName=k3
 ```
 
-CloudFormation crea automáticamente:
-- VPC + Subnet pública + Internet Gateway
-- Security Group (puertos 22, 6443, 30080, 30081, 80, 443)
-- Instancia EC2 t3.medium con Amazon Linux 2023
-- Elastic IP fija
+**Parámetros de la plantilla:**
 
-El **user-data** ejecuta automáticamente al arrancar:
-1. Instala `git`, `docker`, `k3s`
-2. Clona este repositorio
-3. Ejecuta `deploy.sh` → construye imágenes, despliega en k3s
+| Parámetro | Default | Descripción |
+|-----------|---------|-------------|
+| `KeyPairName` | `k3` | Key Pair para SSH |
+| `InstanceType` | `t3.medium` | Tipo de instancia (master y worker) |
+| `K3sToken` | `ppf-k3s-cluster-token-2027` | Token para unir nodos al clúster |
+| `AllowedSSHCidr` | `0.0.0.0/0` | CIDR permitido para SSH |
 
-**Tiempo total: ~7-10 minutos**
+**Lo que hace CloudFormation automáticamente:**
 
-Obtén la IP pública en:
-> AWS Console → CloudFormation → k8s-single-node → **Salidas** → PublicIP
+```
+Master:
+  1. Instala git, docker, k3s
+  2. Clona este repositorio
+  3. Ejecuta deploy.sh → construye imágenes, despliega app + Ingress
+
+Worker:
+  1. Instala git, docker
+  2. Clona este repositorio
+  3. Construye las imágenes Docker (backend, frontend, admin)
+  4. Espera a que el master esté listo
+  5. Se une al clúster k3s como worker
+  6. Importa las imágenes en k3s
+```
+
+**Tiempo total: ~10-12 minutos**
+
+Las IPs públicas aparecen en:
+> AWS Console → CloudFormation → k8s-single-node → **Salidas**
 
 ---
 
-### Paso 2 — Verificar el despliegue
+### Paso 2 — Verificar el clúster
 
 ```bash
-ssh -i k3.pem ec2-user@<IP>
-kubectl get pods -A
+ssh -i k3.pem ec2-user@<MASTER_IP>
+kubectl get nodes
+```
+
+Resultado esperado:
+```
+NAME                         STATUS   ROLES           AGE   VERSION
+ip-10-0-1-xxx.ec2.internal   Ready    control-plane   5m    v1.35.x+k3s1
+ip-10-0-1-yyy.ec2.internal   Ready    <none>          3m    v1.35.x+k3s1
 ```
 
 ---
 
-### Paso 3 — Instalar Trend Vision One Container Security (manual)
+### Paso 3 — Instalar Trend Vision One Container Security
 
-1. Genera un nuevo Bootstrap Token en:
-   > Vision One → Cloud Security → Container Security → K8WebPolitica → Edit → Regenerate token
+> ⚠️ Este paso es **manual** — el bootstrap token caduca y debe generarse en cada despliegue.
 
-2. Sigue las instrucciones en [`VISION-ONE-SETUP.md`](./VISION-ONE-SETUP.md)
+Sigue las instrucciones en [`VISION-ONE-SETUP.md`](./VISION-ONE-SETUP.md).
+
+**Ejecutar siempre en el MASTER.**
+
+Verificación:
+```bash
+kubectl get pods -n trendmicro-system
+# Deben aparecer 2 trendmicro-scout (uno por nodo)
+```
 
 ---
 
@@ -115,9 +158,12 @@ kubectl get pods -A
 
 | URL | Aplicación | Credenciales |
 |-----|-----------|--------------|
-| `http://<IP>:30080/` | Web pública PPF | — |
-| `http://<IP>:30080/admin` | Panel de administración | `admin` / `ppf2027` |
-| `http://<IP>:30081/` | pgAdmin | `admin@ppf.es` / `ppf2027` |
+| `http://<MASTER_IP>:30080/` | Web pública PPF | — |
+| `http://<MASTER_IP>:30080/admin` | Panel de administración | `admin` / `ppf2027` |
+| `http://<MASTER_IP>:30081/` | pgAdmin | `admin@ppf.es` / `ppf2027` |
+
+En pgAdmin, conecta el servidor con:
+- Host: `postgres` · Puerto: `5432` · BD: `ppf` · Usuario: `ppf` · Password: `ppf123`
 
 ---
 
@@ -130,10 +176,21 @@ git add .
 git commit -m "descripción del cambio"
 git push
 
-# 3. En la instancia EC2
+# 3. En el MASTER
 cd /home/ec2-user/partido-app
 git pull
 ./deploy.sh
+
+# 4. Si hay cambios en imágenes, reimportar también en el WORKER
+ssh -i k3.pem ec2-user@<WORKER_IP>
+cd /home/ec2-user/partido-app
+git pull
+sudo docker build -t ppf-backend:latest  backend/
+sudo docker build -t ppf-frontend:latest frontend/
+sudo docker build -t ppf-admin:latest    admin/
+sudo docker save ppf-backend:latest  | sudo k3s ctr images import -
+sudo docker save ppf-frontend:latest | sudo k3s ctr images import -
+sudo docker save ppf-admin:latest    | sudo k3s ctr images import -
 ```
 
 ---
@@ -142,41 +199,40 @@ git pull
 
 ### Web pública PPF (`/`)
 Web del Partido por el Futuro orientada a las **elecciones generales de mayo 2027**.
-- Hero con contador de afiliados
-- Programa electoral por áreas (tabs)
+- Hero con contador animado de afiliados
+- Programa electoral por áreas (tabs interactivos)
 - Noticias y agenda de actos
-- Encuesta interactiva
-- Formulario de afiliación
+- Encuesta interactiva con resultados en tiempo real
+- Formulario de afiliación (guarda en PostgreSQL)
 - Suscripción a newsletter
 
 ### Panel de administración (`/admin`)
-Dashboard privado con login para gestionar:
+Dashboard privado con login JWT para gestionar:
 - Listado y búsqueda de afiliados
 - Baja de afiliados
 - Suscriptores de newsletter
-- Distribución geográfica por provincias
+- Distribución geográfica por provincias (gráfico de barras)
 - Contador de días para las elecciones
 
 ### API Backend (`/api`)
-Node.js + Express + PostgreSQL. Endpoints principales:
-- `POST /api/affiliates` — registrar afiliado
-- `GET /api/affiliates/count` — contador total
-- `POST /api/newsletter` — suscripción
-- `GET /api/news` — noticias
-- `GET /api/events` — agenda
+Node.js + Express + PostgreSQL. Endpoints:
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `POST` | `/api/affiliates` | Registrar afiliado |
+| `GET` | `/api/affiliates/count` | Contador total |
+| `POST` | `/api/newsletter` | Suscripción newsletter |
+| `GET` | `/api/news` | Noticias |
+| `GET` | `/api/events` | Agenda de actos |
 
 ### pgAdmin (`http://<IP>:30081`)
-Gestión visual de PostgreSQL. Conéctate al servidor:
-- Host: `postgres`
-- Puerto: `5432`
-- Base de datos: `ppf`
-- Usuario: `ppf` / Contraseña: `ppf123`
+Gestión visual de PostgreSQL. Tablas disponibles: `affiliates`, `newsletter`.
 
 ---
 
 ## Seguridad — Trend Vision One Container Security
 
-Protección activa sobre el clúster k3s con **6/6 features**:
+Protección activa sobre el clúster con **6/6 features** y **un agente scout por nodo**:
 
 | Feature | Descripción |
 |---------|-------------|
@@ -189,8 +245,9 @@ Protección activa sobre el clúster k3s con **6/6 features**:
 
 ---
 
-## Notas
+## Notas importantes
 
-- El entorno es **volátil** — se destruye cada ~6 horas. Usa `aws cloudformation deploy` para levantarlo de nuevo.
-- El Bootstrap Token de Vision One **caduca** — genera uno nuevo en cada despliegue.
+- El entorno es **volátil** — se destruye cada ~6 horas. Usa CloudFormation para levantarlo de nuevo.
+- El **Bootstrap Token de Vision One caduca** — genera uno nuevo en cada despliegue desde Vision One → Container Security → K8WebPolitica → Edit → Regenerate token.
 - El repo es **público** — no subas tokens ni credenciales reales.
+- El token del clúster k3s (`K3sToken`) es estático y está en la plantilla CloudFormation — no es un secreto crítico ya que solo permite unir nodos dentro de la misma VPC.
