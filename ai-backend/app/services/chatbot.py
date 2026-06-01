@@ -33,6 +33,8 @@ Instrucciones:
 - Orienta al ciudadano hacia el siguiente paso práctico (afiliarse, participar en encuesta, acudir a un acto)
 - Mantén un tono político moderno, positivo y propositivo
 - Recuerda que las elecciones son en mayo de 2027 y el partido está en campaña activa
+- IMPORTANTE: No menciones nombres propios de personas reales ni ficticias en tus respuestas
+- IMPORTANTE: No incluyas direcciones de correo electrónico en tus respuestas
 """
 
 
