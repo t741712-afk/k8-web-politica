@@ -248,7 +248,16 @@ Resources:
             dnf update -y --allowerasing || true
 
             echo "==> Installing utilities"
-            dnf install -y --allowerasing tar git bash-completion
+            dnf install -y --allowerasing tar git bash-completion docker
+
+            echo "==> Enabling Docker"
+            systemctl enable --now docker
+
+            echo "==> Cloning repo and building images"
+            git clone https://github.com/t741712-afk/k8-web-politica.git /home/ec2-user/partido-app
+            docker build -t ppf-backend:latest  /home/ec2-user/partido-app/backend
+            docker build -t ppf-frontend:latest /home/ec2-user/partido-app/frontend
+            docker build -t ppf-admin:latest    /home/ec2-user/partido-app/admin
 
             echo "==> Waiting for master API to be reachable"
             until curl -sk https://${MasterPrivateIP}:6443/healthz | grep -q "ok"; do
@@ -262,7 +271,12 @@ Resources:
               K3S_TOKEN="${K3sToken}" \
               sh -
 
-            echo "==> Worker joined the cluster"
+            echo "==> Importing images into k3s"
+            docker save ppf-backend:latest  | k3s ctr images import -
+            docker save ppf-frontend:latest | k3s ctr images import -
+            docker save ppf-admin:latest    | k3s ctr images import -
+
+            echo "==> Worker ready"
           - MasterPrivateIP: !GetAtt K3sMaster.PrivateIp
       Tags:
         - Key: Name
