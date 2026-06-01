@@ -18,7 +18,7 @@ def scan_file(file_path: str) -> dict:
         print("[FILE_SECURITY] Inicializando conexión gRPC...")
         handle = amaas.grpc.init_by_region(FILE_SECURITY_REGION, FILE_SECURITY_API_KEY, True)
         print("[FILE_SECURITY] Escaneando archivo...")
-        result = amaas.grpc.scan_file(file_path, handle)
+        result = amaas.grpc.scan_file(handle, file_path)
         amaas.grpc.quit(handle)
         print(f"[FILE_SECURITY] Resultado raw: {result}")
 
