@@ -1,6 +1,6 @@
 # K8WebPolitica — Entorno Kubernetes en AWS
 
-Web ficticia del **Partido por el Futuro (PPF)** desplegada en un clúster k3s de 2 nodos sobre AWS EC2, protegida con Trend Vision One Container Security.
+Web ficticia del **Partido por el Futuro (PPF)** desplegada en un clúster k3s de **3 nodos (1 master + 2 workers)** sobre AWS EC2, con Network Load Balancer y protegida con Trend Vision One Container Security.
 
 ---
 
@@ -8,25 +8,32 @@ Web ficticia del **Partido por el Futuro (PPF)** desplegada en un clúster k3s d
 
 ```
 CloudFormation
-  └── EC2 t3.medium — k3s MASTER (control-plane)
+  ├── AWS NLB (internet-facing)
+  │     ├── Puerto 80   → NodePort 30080 (Web + Admin)
+  │     └── Puerto 5050 → NodePort 30081 (pgAdmin)
+  │
+  ├── EC2 t3.medium — k3s MASTER (control-plane) — AZ 0 (10.0.1.0/24)
   │     ├── namespace: ingress-nginx
   │     │     └── Nginx Ingress Controller (NodePort 30080)
   │     ├── namespace: ppf
-  │     │     ├── ppf-frontend   → http://<IP>:30080/
+  │     │     ├── ppf-frontend   → http://<NLB>/
   │     │     ├── ppf-backend    → Node.js API (interno)
-  │     │     ├── ppf-admin      → http://<IP>:30080/admin
+  │     │     ├── ppf-admin      → http://<NLB>/admin
   │     │     ├── postgres       → Base de datos (interno)
-  │     │     └── pgadmin        → http://<IP>:30081/
+  │     │     └── pgadmin        → http://<NLB>:5050/
   │     └── namespace: trendmicro-system
-  │           └── Vision One Container Security
-  │                 └── trendmicro-scout (nodo master)
+  │           └── trendmicro-scout
   │
-  └── EC2 t3.medium — k3s WORKER
+  ├── EC2 t3.medium — k3s WORKER 1 — AZ 0 (10.0.1.0/24)
+  │     └── namespace: trendmicro-system
+  │           └── trendmicro-scout
+  │
+  └── EC2 t3.medium — k3s WORKER 2 — AZ 1 (10.0.2.0/24)
         └── namespace: trendmicro-system
-              └── trendmicro-scout (nodo worker)
+              └── trendmicro-scout
 ```
 
-Los pods se distribuyen automáticamente entre master y worker. El worker construye las imágenes Docker localmente al arrancar y se une al clúster usando un token estático.
+Los pods se distribuyen automáticamente entre los 3 nodos. Los workers construyen las imágenes Docker localmente al arrancar y se unen al clúster usando un token estático. El NLB balancea el tráfico entre los 3 nodos.
 
 ---
 
@@ -106,18 +113,22 @@ Master:
   2. Clona este repositorio
   3. Ejecuta deploy.sh → construye imágenes, despliega app + Ingress
 
-Worker:
+Worker 1 y Worker 2 (en paralelo):
   1. Instala git, docker
   2. Clona este repositorio
   3. Construye las imágenes Docker (backend, frontend, admin)
-  4. Espera a que el master esté listo
+  4. Espera a que el master esté listo (healthz)
   5. Se une al clúster k3s como worker
   6. Importa las imágenes en k3s
+
+NLB:
+  - Se crea automáticamente con listeners en puertos 80 y 5050
+  - Balancea a los 3 nodos (master + worker1 + worker2)
 ```
 
-**Tiempo total: ~10-12 minutos**
+**Tiempo total: ~12-15 minutos**
 
-Las IPs públicas aparecen en:
+El DNS del NLB y las IPs de los nodos aparecen en:
 > AWS Console → CloudFormation → k8s-single-node → **Salidas**
 
 ---
@@ -134,6 +145,7 @@ Resultado esperado:
 NAME                         STATUS   ROLES           AGE   VERSION
 ip-10-0-1-xxx.ec2.internal   Ready    control-plane   5m    v1.35.x+k3s1
 ip-10-0-1-yyy.ec2.internal   Ready    <none>          3m    v1.35.x+k3s1
+ip-10-0-2-zzz.ec2.internal   Ready    <none>          3m    v1.35.x+k3s1
 ```
 
 ---
@@ -158,9 +170,11 @@ kubectl get pods -n trendmicro-system
 
 | URL | Aplicación | Credenciales |
 |-----|-----------|--------------|
-| `http://<MASTER_IP>:30080/` | Web pública PPF | — |
-| `http://<MASTER_IP>:30080/admin` | Panel de administración | `admin` / `ppf2027` |
-| `http://<MASTER_IP>:30081/` | pgAdmin | `admin@ppf.es` / `ppf2027` |
+| `http://<NLB_DNS>/` | Web pública PPF | — |
+| `http://<NLB_DNS>/admin` | Panel de administración | `admin` / `ppf2027` |
+| `http://<NLB_DNS>:5050/` | pgAdmin | `admin@ppf.es` / `ppf2027` |
+
+> Las URLs con el DNS del NLB aparecen en los **Outputs** de CloudFormation.
 
 En pgAdmin, conecta el servidor con:
 - Host: `postgres` · Puerto: `5432` · BD: `ppf` · Usuario: `ppf` · Password: `ppf123`

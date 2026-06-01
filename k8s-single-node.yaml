@@ -1,8 +1,8 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Clúster k3s de 2 nodos (master + worker) en AWS EC2.
-  Despliega VPC, subnet pública, security group, y dos instancias EC2.
-  El worker se une automáticamente al master usando un token estático.
+  Clúster k3s HA en AWS: 1 master + 2 workers + NLB.
+  El NLB distribuye el tráfico entre los workers en el puerto 80.
+  Los workers construyen las imágenes Docker y se unen al clúster automáticamente.
 
 # ---------------------------------------------------------------------------
 # Parameters
@@ -27,7 +27,7 @@ Parameters:
   K3sToken:
     Type: String
     Default: "ppf-k3s-cluster-token-2027"
-    Description: Token compartido entre master y worker para unirse al clúster.
+    Description: Token compartido entre master y workers para unirse al clúster.
     NoEcho: true
 
   LatestAL2023AmiId:
@@ -75,6 +75,17 @@ Resources:
         - Key: Name
           Value: k3s-public-subnet
 
+  K3sPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref K3sVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: k3s-public-subnet-2
+
   K3sRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -95,6 +106,12 @@ Resources:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref K3sPublicSubnet
+      RouteTableId: !Ref K3sRouteTable
+
+  K3sSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref K3sPublicSubnet2
       RouteTableId: !Ref K3sRouteTable
 
   # ── Security Group ────────────────────────────────────────────────────────
@@ -132,7 +149,6 @@ Resources:
         - Key: Name
           Value: k3s-sg
 
-  # Permite comunicación interna libre entre los nodos del clúster
   K3sIntraClusterIngress:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -219,9 +235,9 @@ Resources:
         - Key: Name
           Value: k3s-master-eip
 
-  # ── WORKER NODE ───────────────────────────────────────────────────────────
+  # ── WORKER 1 ──────────────────────────────────────────────────────────────
 
-  K3sWorker:
+  K3sWorker1:
     Type: AWS::EC2::Instance
     DependsOn: K3sMaster
     Properties:
@@ -265,7 +281,7 @@ Resources:
               sleep 10
             done
 
-            echo "==> Joining k3s cluster as worker"
+            echo "==> Joining k3s cluster as worker-1"
             curl -sfL https://get.k3s.io | \
               K3S_URL="https://${MasterPrivateIP}:6443" \
               K3S_TOKEN="${K3sToken}" \
@@ -276,51 +292,204 @@ Resources:
             docker save ppf-frontend:latest | k3s ctr images import -
             docker save ppf-admin:latest    | k3s ctr images import -
 
-            echo "==> Worker ready"
+            echo "==> Worker-1 ready"
           - MasterPrivateIP: !GetAtt K3sMaster.PrivateIp
       Tags:
         - Key: Name
-          Value: k3s-worker
+          Value: k3s-worker-1
         - Key: Role
           Value: worker
 
-  K3sWorkerEIP:
+  K3sWorker1EIP:
     Type: AWS::EC2::EIP
     Properties:
       Domain: vpc
-      InstanceId: !Ref K3sWorker
+      InstanceId: !Ref K3sWorker1
       Tags:
         - Key: Name
-          Value: k3s-worker-eip
+          Value: k3s-worker-1-eip
+
+  # ── WORKER 2 ──────────────────────────────────────────────────────────────
+
+  K3sWorker2:
+    Type: AWS::EC2::Instance
+    DependsOn: K3sMaster
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestAL2023AmiId
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref K3sPublicSubnet2
+      SecurityGroupIds:
+        - !Ref K3sSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            set -euo pipefail
+            exec > >(tee /var/log/k3s-worker-install.log | logger -t k3s-worker) 2>&1
+
+            echo "==> Updating system packages"
+            dnf update -y --allowerasing || true
+
+            echo "==> Installing utilities"
+            dnf install -y --allowerasing tar git bash-completion docker
+
+            echo "==> Enabling Docker"
+            systemctl enable --now docker
+
+            echo "==> Cloning repo and building images"
+            git clone https://github.com/t741712-afk/k8-web-politica.git /home/ec2-user/partido-app
+            docker build -t ppf-backend:latest  /home/ec2-user/partido-app/backend
+            docker build -t ppf-frontend:latest /home/ec2-user/partido-app/frontend
+            docker build -t ppf-admin:latest    /home/ec2-user/partido-app/admin
+
+            echo "==> Waiting for master API to be reachable"
+            until curl -sk --max-time 5 https://${MasterPrivateIP}:6443/healthz; do
+              echo "Master not ready yet, retrying in 10s..."
+              sleep 10
+            done
+
+            echo "==> Joining k3s cluster as worker-2"
+            curl -sfL https://get.k3s.io | \
+              K3S_URL="https://${MasterPrivateIP}:6443" \
+              K3S_TOKEN="${K3sToken}" \
+              sh -
+
+            echo "==> Importing images into k3s"
+            docker save ppf-backend:latest  | k3s ctr images import -
+            docker save ppf-frontend:latest | k3s ctr images import -
+            docker save ppf-admin:latest    | k3s ctr images import -
+
+            echo "==> Worker-2 ready"
+          - MasterPrivateIP: !GetAtt K3sMaster.PrivateIp
+      Tags:
+        - Key: Name
+          Value: k3s-worker-2
+        - Key: Role
+          Value: worker
+
+  K3sWorker2EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref K3sWorker2
+      Tags:
+        - Key: Name
+          Value: k3s-worker-2-eip
+
+  # ── NETWORK LOAD BALANCER ─────────────────────────────────────────────────
+
+  K3sNLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: k3s-nlb
+      Type: network
+      Scheme: internet-facing
+      Subnets:
+        - !Ref K3sPublicSubnet
+        - !Ref K3sPublicSubnet2
+      Tags:
+        - Key: Name
+          Value: k3s-nlb
+
+  # Target group HTTP → NodePort 30080 (todos los nodos)
+  K3sTargetGroupHTTP:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: k3s-tg-http
+      Protocol: TCP
+      Port: 30080
+      VpcId: !Ref K3sVPC
+      TargetType: instance
+      HealthCheckProtocol: TCP
+      HealthCheckPort: "30080"
+      Targets:
+        - Id: !Ref K3sMaster
+        - Id: !Ref K3sWorker1
+        - Id: !Ref K3sWorker2
+      Tags:
+        - Key: Name
+          Value: k3s-tg-http
+
+  # Target group pgAdmin → NodePort 30081
+  K3sTargetGroupPgAdmin:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: k3s-tg-pgadmin
+      Protocol: TCP
+      Port: 30081
+      VpcId: !Ref K3sVPC
+      TargetType: instance
+      HealthCheckProtocol: TCP
+      HealthCheckPort: "30081"
+      Targets:
+        - Id: !Ref K3sMaster
+        - Id: !Ref K3sWorker1
+        - Id: !Ref K3sWorker2
+      Tags:
+        - Key: Name
+          Value: k3s-tg-pgadmin
+
+  # Listener puerto 80 → web + admin
+  K3sListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref K3sNLB
+      Protocol: TCP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref K3sTargetGroupHTTP
+
+  # Listener puerto 5050 → pgAdmin
+  K3sListenerPgAdmin:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref K3sNLB
+      Protocol: TCP
+      Port: 5050
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref K3sTargetGroupPgAdmin
 
 # ---------------------------------------------------------------------------
 # Outputs
 # ---------------------------------------------------------------------------
 Outputs:
+  NLBDNSName:
+    Description: DNS del NLB — usa esta URL para acceder
+    Value: !GetAtt K3sNLB.DNSName
+
+  WebURL:
+    Description: URL de la web PPF
+    Value: !Sub "http://${K3sNLB.DNSName}/"
+
+  AdminURL:
+    Description: URL del panel de administración
+    Value: !Sub "http://${K3sNLB.DNSName}/admin"
+
+  pgAdminURL:
+    Description: URL de pgAdmin
+    Value: !Sub "http://${K3sNLB.DNSName}:5050/"
+
   MasterPublicIP:
-    Description: IP pública del nodo master
+    Description: IP pública del master (para SSH y kubectl)
     Value: !Ref K3sMasterEIP
 
-  WorkerPublicIP:
-    Description: IP pública del nodo worker
-    Value: !Ref K3sWorkerEIP
+  Worker1PublicIP:
+    Description: IP pública del worker-1
+    Value: !Ref K3sWorker1EIP
+
+  Worker2PublicIP:
+    Description: IP pública del worker-2
+    Value: !Ref K3sWorker2EIP
 
   SSHMaster:
     Description: SSH al master
     Value: !Sub "ssh -i k3.pem ec2-user@${K3sMasterEIP}"
-
-  SSHWorker:
-    Description: SSH al worker
-    Value: !Sub "ssh -i k3.pem ec2-user@${K3sWorkerEIP}"
-
-  WebURL:
-    Description: URL de la web PPF
-    Value: !Sub "http://${K3sMasterEIP}:30080/"
-
-  AdminURL:
-    Description: URL del panel de administración
-    Value: !Sub "http://${K3sMasterEIP}:30080/admin"
-
-  pgAdminURL:
-    Description: URL de pgAdmin
-    Value: !Sub "http://${K3sMasterEIP}:30081/"
