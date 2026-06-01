@@ -44,11 +44,28 @@ def call_trend_ai_guard(text: str, direction: str) -> dict:
         return {"status": "error", "details": str(e)}
 
 
+# Reglas de AI Guard que generan falsos positivos en contenido político legítimo
+# y se omiten intencionadamente en este contexto.
+IGNORED_RULES = {"SPAIN_FULL_SPANISH_NAME", "JP_EMAIL_ADDRESS"}
+
+
 def _classify_trend_result(result: dict) -> dict:
     action = result.get("action", "Allow")
     reasons = result.get("reasons", [])
 
     if action == "Block":
+        # Extraer IDs de reglas que dispararon el bloqueo
+        sensitive_rules = set()
+        sensitive_info = result.get("sensitiveInformation", {})
+        for rule in sensitive_info.get("rules", []):
+            sensitive_rules.add(rule.get("id", ""))
+
+        # Si TODAS las reglas que dispararon el bloqueo están en la lista de ignoradas,
+        # tratamos la respuesta como permitida (falso positivo conocido)
+        if sensitive_rules and sensitive_rules.issubset(IGNORED_RULES):
+            print(f"[AI_GUARD] Bloqueo ignorado por reglas excluidas: {sensitive_rules}")
+            return {"allowed": True, "reason": None, "event_type": None}
+
         reason_text = ", ".join(reasons) if reasons else "Blocked by Trend AI Guard"
         event_type = "trend_guard_blocked"
 
