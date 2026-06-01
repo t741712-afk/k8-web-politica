@@ -3,7 +3,7 @@ import "./index.css";
 
 // API_BASE apunta al prefijo /asistente para que nginx del contenedor
 // reciba /api/... y lo proxíe al ppf-ai-backend
-const API_BASE = "/asistente";
+const API_BASE = "";
 
 export default function App() {
   const fileInputRef = useRef(null);
