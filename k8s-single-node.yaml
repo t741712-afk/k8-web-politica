@@ -251,7 +251,7 @@ Resources:
             dnf install -y --allowerasing tar git bash-completion
 
             echo "==> Waiting for master API to be reachable"
-            until curl -sk https://${MasterPrivateIP}:6443/ping | grep -q "ok"; do
+            until curl -sk https://${MasterPrivateIP}:6443/healthz | grep -q "ok"; do
               echo "Master not ready yet, retrying in 10s..."
               sleep 10
             done
