@@ -36,6 +36,11 @@ img { max-width: 100%; }
   padding: 8px 20px; border-radius: 50px; font-weight: 700;
 }
 .btn-nav:hover { background: var(--gold-l); }
+.btn-nav-ai {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+  color: #fff !important;
+}
+.btn-nav-ai:hover { opacity: .85; background: linear-gradient(135deg, #6366f1, #8b5cf6) !important; }
 
 /* ── Navbar ── */
 #navbar {
@@ -267,4 +272,45 @@ img { max-width: 100%; }
 @media (max-width: 480px) {
   .footer-inner { grid-template-columns: 1fr; }
   .survey-options { flex-direction: column; }
+}
+
+/* ── AI Section ── */
+.ai-section { background: linear-gradient(135deg, #0f1b35 0%, #1c3f8f 60%, #6366f1 100%); color: var(--white); }
+.ai-banner {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;
+}
+.ai-banner-text .section-tag { background: rgba(255,255,255,.15); color: var(--white); }
+.ai-banner-text h2 { color: var(--white); margin: 12px 0 16px; }
+.ai-banner-text .section-sub { color: rgba(255,255,255,.8); margin-bottom: 28px; }
+.ai-features {
+  display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 32px;
+}
+.ai-feature {
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+  color: var(--white); padding: 6px 16px; border-radius: 50px; font-size: .875rem; font-weight: 600;
+}
+.ai-cta { background: var(--gold); color: var(--dark); }
+.ai-cta:hover { background: var(--gold-l); }
+
+/* Chat preview mockup */
+.ai-chat-preview {
+  background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.15);
+  border-radius: 20px; padding: 28px; display: flex; flex-direction: column; gap: 14px;
+  backdrop-filter: blur(10px);
+}
+.chat-bubble {
+  padding: 12px 18px; border-radius: 18px; font-size: .9rem; line-height: 1.5; max-width: 85%;
+}
+.chat-bubble.bot {
+  background: rgba(255,255,255,.15); color: var(--white); align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+.chat-bubble.user {
+  background: var(--gold); color: var(--dark); font-weight: 600;
+  align-self: flex-end; border-bottom-right-radius: 4px;
+}
+
+@media (max-width: 768px) {
+  .ai-banner { grid-template-columns: 1fr; gap: 36px; }
+  .ai-banner-visual { display: none; }
 }
