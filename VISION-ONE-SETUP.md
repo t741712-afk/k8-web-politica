@@ -46,3 +46,5 @@ kubectl get pods -n trendmicro-system
 ```
 
 Todos los pods deben estar en `Running` y `READY`.
+
+Una vez levantado, el acceso al Máster es a través del IP-Publica y el puerto 30080 y el PgAdmin el puerto 30081, accesos de administración mediante SSH (puerto 22) y la API de Kubernetes (puerto 6443)

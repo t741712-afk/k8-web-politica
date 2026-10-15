@@ -58,7 +58,7 @@ def get_ai_reply(message: str) -> str:
     messages.append({"role": "user", "content": message})
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b", #"llama-3.3-70b-versatile",
         messages=messages,
         temperature=0.3,
     )
