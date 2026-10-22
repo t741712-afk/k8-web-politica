@@ -12,9 +12,9 @@ Generar un nuevo **Bootstrap Token** en:
 ```bash
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
-cat > /home/ec2-user/overrides.yaml << 'EOF'
+cat > /home/ubuntu/overrides.yaml << 'EOF'
 visionOne:
-  bootstrapToken: PEGA_AQUI_EL_TOKEN
+  bootstrapToken: <PEGA AQUI TU TOKEN>
   endpoint: https://api.eu.xdr.trendmicro.com/external/v2/direct/vcs/external/vcs
   exclusion:
     namespaces: [kube-system]
@@ -35,7 +35,7 @@ EOF
 
 helm install trendmicro \
   --namespace trendmicro-system --create-namespace \
-  --values /home/ec2-user/overrides.yaml \
+  --values /home/ubuntu/overrides.yaml \
   https://github.com/trendmicro/visionone-container-security-helm/archive/main.tar.gz
 ```
 
