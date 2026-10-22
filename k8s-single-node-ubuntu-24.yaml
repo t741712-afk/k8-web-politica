@@ -27,7 +27,7 @@ Parameters:
     Type: String
     Default: "ppf-k3s-cluster-token-2027"
     NoEcho: true
-    Description: Token aleatorio único de al menos 32 caracteres compartido entre master y workers.
+    Description: Token compartido entre master y workers para unirse al clúster.
 
   LatestUbuntu2404AmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
