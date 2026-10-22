@@ -14,7 +14,7 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 cat > /home/ubuntu/overrides.yaml << 'EOF'
 visionOne:
-  bootstrapToken: <PEGA AQUI TU TOKEN>
+  bootstrapToken: <TOKEN>
   endpoint: https://api.eu.xdr.trendmicro.com/external/v2/direct/vcs/external/vcs
   exclusion:
     namespaces: [kube-system]
@@ -43,6 +43,12 @@ helm install trendmicro \
 
 ```bash
 kubectl get pods -n trendmicro-system
+```
+
+## Borrar instalación
+
+```bash
+helm uninstall trendmicro -n trendmicro-system
 ```
 
 Todos los pods deben estar en `Running` y `READY`.
