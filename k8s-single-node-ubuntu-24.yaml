@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Clúster k3s en AWS con Ubuntu Server 24.04: 1 master + 2 workers + NLB.
+  Clúster k3s en AWS con Ubuntu Server 24.04 LTS: 1 master + 2 workers + NLB.
   El NLB distribuye el tráfico entre los workers en el puerto 80.
   Los workers construyen las imágenes Docker y se unen al clúster automáticamente.
 
@@ -21,18 +21,18 @@ Parameters:
 
   AllowedSSHCidr:
     Type: String
-    Default: "0.0.0.0/0"
-    Description: CIDR permitido para SSH.
+    Description: CIDR autorizado para SSH, por ejemplo la IP pública de administración seguida de /32.
 
   K3sToken:
     Type: String
-    Default: "ppf-k3s-cluster-token-2027"
-    Description: Token compartido entre master y workers para unirse al clúster.
+    MinLength: "ppf-k3s-cluster-token-2027"
     NoEcho: true
+    Description: Token aleatorio único de al menos 32 caracteres compartido entre master y workers.
 
   LatestUbuntu2404AmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+    Description: AMI oficial más reciente de Ubuntu Server 24.04 LTS (x86_64).
 
 # ---------------------------------------------------------------------------
 # Resources
@@ -168,7 +168,7 @@ Resources:
       SecurityGroupIds:
         - !Ref K3sSecurityGroup
       BlockDeviceMappings:
-        - DeviceName: /dev/sda1
+        - DeviceName: /dev/xvda
           Ebs:
             VolumeSize: 30
             VolumeType: gp3
@@ -179,13 +179,13 @@ Resources:
           set -euo pipefail
           exec > >(tee /var/log/k3s-install.log | logger -t k3s-install) 2>&1
 
-          echo "==> Updating system packages"
           export DEBIAN_FRONTEND=noninteractive
+          echo "==> Updating system packages"
           apt-get update
           apt-get upgrade -y
 
-          echo "==> Installing utilities"
-          apt-get install -y tar git bash-completion docker.io curl
+          echo "==> Installing utilities and Docker"
+          apt-get install -y ca-certificates curl git tar bash-completion docker.io
 
           echo "==> Installing k3s master"
           curl -sfL https://get.k3s.io | K3S_TOKEN="${K3sToken}" sh -s - \
@@ -197,17 +197,15 @@ Resources:
             sleep 5
           done
 
-          echo "==> kubectl aliases"
+          echo "==> kubectl completion and aliases"
+          mkdir -p /etc/bash_completion.d
           kubectl completion bash > /etc/bash_completion.d/kubectl
-          echo 'alias k=kubectl' >> /etc/bash.bashrc
-          echo 'complete -F __start_kubectl k' >> /etc/bash.bashrc
+          printf '\nalias k=kubectl\n' >> /home/ubuntu/.bashrc
+          printf 'source /etc/bash_completion.d/kubectl\n' >> /home/ubuntu/.bashrc
 
-          echo "==> Kubeconfig for ubuntu"
+          echo "==> Kubeconfig for ubuntu (keep API endpoint on localhost)"
           mkdir -p /home/ubuntu/.kube
-          cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
-          sed -i "s/127.0.0.1/$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/g" \
-            /home/ubuntu/.kube/config
-          chown -R ubuntu:ubuntu /home/ubuntu/.kube
+          install -o ubuntu -g ubuntu -m 600 /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
 
           echo "==> Enabling Docker"
           systemctl enable --now docker
@@ -250,7 +248,7 @@ Resources:
       SecurityGroupIds:
         - !Ref K3sSecurityGroup
       BlockDeviceMappings:
-        - DeviceName: /dev/sda1
+        - DeviceName: /dev/xvda
           Ebs:
             VolumeSize: 20
             VolumeType: gp3
@@ -262,13 +260,13 @@ Resources:
             set -euo pipefail
             exec > >(tee /var/log/k3s-worker-install.log | logger -t k3s-worker) 2>&1
 
-            echo "==> Updating system packages"
             export DEBIAN_FRONTEND=noninteractive
+            echo "==> Updating system packages"
             apt-get update
             apt-get upgrade -y
 
-            echo "==> Installing utilities"
-            apt-get install -y tar git bash-completion docker.io curl
+            echo "==> Installing utilities and Docker"
+            apt-get install -y ca-certificates curl git tar bash-completion docker.io
 
             echo "==> Enabling Docker"
             systemctl enable --now docker
@@ -330,7 +328,7 @@ Resources:
       SecurityGroupIds:
         - !Ref K3sSecurityGroup
       BlockDeviceMappings:
-        - DeviceName: /dev/sda1
+        - DeviceName: /dev/xvda
           Ebs:
             VolumeSize: 20
             VolumeType: gp3
@@ -342,13 +340,13 @@ Resources:
             set -euo pipefail
             exec > >(tee /var/log/k3s-worker-install.log | logger -t k3s-worker) 2>&1
 
-            echo "==> Updating system packages"
             export DEBIAN_FRONTEND=noninteractive
+            echo "==> Updating system packages"
             apt-get update
             apt-get upgrade -y
 
-            echo "==> Installing utilities"
-            apt-get install -y tar git bash-completion docker.io curl
+            echo "==> Installing utilities and Docker"
+            apt-get install -y ca-certificates curl git tar bash-completion docker.io
 
             echo "==> Enabling Docker"
             systemctl enable --now docker
@@ -505,5 +503,5 @@ Outputs:
     Value: !Ref K3sWorker2EIP
 
   SSHMaster:
-    Description: SSH al master
+    Description: SSH al master (Ubuntu)
     Value: !Sub "ssh -i k3.pem ubuntu@${K3sMasterEIP}"
