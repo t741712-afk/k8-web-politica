@@ -184,6 +184,7 @@ Resources:
 
           echo "==> Installing utilities"
           dnf install -y --allowerasing tar git bash-completion docker
+          dnf install kernel-devel -y
 
           echo "==> Installing k3s master"
           curl -sfL https://get.k3s.io | K3S_TOKEN="${K3sToken}" sh -s - \

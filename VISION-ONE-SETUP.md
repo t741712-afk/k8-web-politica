@@ -48,3 +48,11 @@ kubectl get pods -n trendmicro-system
 Todos los pods deben estar en `Running` y `READY`.
 
 Una vez levantado, el acceso al Máster es a través del IP-Publica y el puerto 30080 y el PgAdmin el puerto 30081, accesos de administración mediante SSH (puerto 22) y la API de Kubernetes (puerto 6443)
+
+###### Verificar Política - descargar previamente el Eicar ######
+
+kubectl cp /home/ubuntu/eicar.txt ppf/ppf-frontend-5cf9cb87b9-cvcn7:/tmp/eicar.txt && \
+kubectl cp /home/ubuntu/eicar.txt ppf/ppf-frontend-5cf9cb87b9-lnphb:/tmp/eicar.txt
+
+kubectl exec -n ppf ppf-frontend-5cf9cb87b9-cvcn7 -- ls -l /tmp/eicar.txt
+kubectl exec -n ppf ppf-frontend-5cf9cb87b9-lnphb -- ls -l /tmp/eicar.txt

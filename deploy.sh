@@ -1,12 +1,20 @@
 #!/bin/bash
-set -e
-REPO_DIR=/home/ec2-user/partido-app
+set -Eeuo pipefail
+
+REPO_DIR=/home/ubuntu/partido-app
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+export KUBECONFIG="${KUBECONFIG}"
+
+echo "==> Verificando entorno..."
+if [[ ! -d "$REPO_DIR" ]]; then
+  echo "ERROR: No existe $REPO_DIR"
+  exit 1
+fi
 
 echo "==> Instalando Docker..."
-sudo dnf install -y docker
+sudo apt-get update
+sudo apt-get install -y docker.io
 sudo systemctl enable --now docker
-sudo usermod -aG docker ec2-user
 
 echo "==> Construyendo imágenes..."
 sudo docker build -t ppf-backend:latest     "$REPO_DIR/backend"
@@ -22,45 +30,40 @@ sudo docker save ppf-admin:latest       | sudo k3s ctr images import -
 sudo docker save ppf-ai-backend:latest  | sudo k3s ctr images import -
 sudo docker save ppf-ai-frontend:latest | sudo k3s ctr images import -
 
-echo "==> Instalando Helm..."
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+echo "==> Instalando Helm si no existe..."
+if ! command -v helm >/dev/null 2>&1; then
+  curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+fi
 
-echo "==> Instalando Nginx Ingress Controller..."
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+echo "==> Configurando Nginx Ingress Controller..."
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
 helm repo update
+
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
   --namespace ingress-nginx --create-namespace \
   --set controller.service.type=NodePort \
   --set controller.service.nodePorts.http=30080 \
   --set controller.service.nodePorts.https=30443 \
-  --wait --timeout=120s
+  --wait --timeout=180s
 
-echo "==> Desplegando app PPF..."
+echo "==> Desplegando aplicación PPF..."
 kubectl apply -f "$REPO_DIR/k8s/ppf.yaml"
 kubectl apply -f "$REPO_DIR/k8s/admin.yaml"
 kubectl apply -f "$REPO_DIR/k8s/pgadmin.yaml"
 kubectl apply -f "$REPO_DIR/k8s/ai.yaml"
 kubectl apply -f "$REPO_DIR/k8s/ingress.yaml"
 
-echo "==> Esperando pods..."
-kubectl rollout status deployment/ppf-backend     -n ppf --timeout=120s
-kubectl rollout status deployment/ppf-frontend    -n ppf --timeout=120s
-kubectl rollout status deployment/ppf-admin       -n ppf --timeout=120s
-kubectl rollout status deployment/ppf-ai-backend  -n ppf --timeout=180s || true
-kubectl rollout status deployment/ppf-ai-frontend -n ppf --timeout=120s || true
+echo "==> Esperando deployments..."
+kubectl rollout status deployment/ppf-backend -n ppf --timeout=180s
+kubectl rollout status deployment/ppf-frontend -n ppf --timeout=180s
+kubectl rollout status deployment/ppf-admin -n ppf --timeout=180s
+kubectl rollout status deployment/ppf-ai-backend -n ppf --timeout=180s || true
+kubectl rollout status deployment/ppf-ai-frontend -n ppf --timeout=180s || true
 
-echo "==> Desplegando Trend Vision One Container Security..."
-helm upgrade --install trendmicro \
-  --namespace trendmicro-system --create-namespace \
-  --values "$REPO_DIR/overrides.yaml" \
-  https://github.com/trendmicro/visionone-container-security-helm/archive/main.tar.gz
+echo "==> Estado de la aplicación..."
+kubectl get pods,svc,ingress -n ppf -o wide
+kubectl get pods -n ingress-nginx -o wide
 
-echo ""
-PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-echo "✅ Despliegue completo"
-echo ""
-echo "🌐 Web pública:   http://$PUBLIC_IP:30080/"
-echo "🔐 Panel admin:   http://$PUBLIC_IP:30080/admin   (admin / ppf2027)"
-echo "🗄️  pgAdmin:       http://$PUBLIC_IP:30080/pgadmin (admin@ppf.es / ppf2027)"
-echo ""
-kubectl get pods -A --field-selector=metadata.namespace!=kube-system
+echo "==> Despliegue de la aplicación finalizado."
+echo "Trend Micro no se ha modificado."
+echo "Comprueba el DNS del NLB y sus target groups en AWS."

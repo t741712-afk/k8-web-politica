@@ -1,0 +1,507 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Clúster k3s en AWS con Ubuntu Server 24.04 LTS: 1 master + 2 workers + NLB.
+  El NLB distribuye el tráfico entre los workers en el puerto 80.
+  Los workers construyen las imágenes Docker y se unen al clúster automáticamente.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: k3
+    Description: Key Pair para acceso SSH.
+
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues: [t3.small, t3.medium, t3.large]
+    Description: Tipo de instancia EC2.
+
+  AllowedSSHCidr:
+    Type: String
+    Description: CIDR autorizado para SSH, por ejemplo la IP pública de administración seguida de /32.
+
+  K3sToken:
+    Type: String
+    MinLength: 32
+    NoEcho: true
+    Description: Token aleatorio único de al menos 32 caracteres compartido entre master y workers.
+
+  LatestUbuntu2404AmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+    Description: AMI oficial más reciente de Ubuntu Server 24.04 LTS (x86_64).
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+
+  # ── VPC & Networking ──────────────────────────────────────────────────────
+
+  K3sVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: k3s-vpc
+
+  K3sInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: k3s-igw
+
+  K3sVPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref K3sVPC
+      InternetGatewayId: !Ref K3sInternetGateway
+
+  K3sPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref K3sVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: k3s-public-subnet
+
+  K3sPublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref K3sVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: k3s-public-subnet-2
+
+  K3sRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref K3sVPC
+      Tags:
+        - Key: Name
+          Value: k3s-rt
+
+  K3sDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: K3sVPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref K3sRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref K3sInternetGateway
+
+  K3sSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref K3sPublicSubnet
+      RouteTableId: !Ref K3sRouteTable
+
+  K3sSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref K3sPublicSubnet2
+      RouteTableId: !Ref K3sRouteTable
+
+  # ── Security Group ────────────────────────────────────────────────────────
+
+  K3sSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: k3s cluster security group
+      VpcId: !Ref K3sVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedSSHCidr
+        - IpProtocol: tcp
+          FromPort: 6443
+          ToPort: 6443
+          CidrIp: !Ref AllowedSSHCidr
+        - IpProtocol: tcp
+          FromPort: 30000
+          ToPort: 32767
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: Name
+          Value: k3s-sg
+
+  K3sIntraClusterIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref K3sSecurityGroup
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !Ref K3sSecurityGroup
+
+  # ── MASTER NODE ───────────────────────────────────────────────────────────
+
+  K3sMaster:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestUbuntu2404AmiId
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref K3sPublicSubnet
+      SecurityGroupIds:
+        - !Ref K3sSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 30
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          exec > >(tee /var/log/k3s-install.log | logger -t k3s-install) 2>&1
+
+          export DEBIAN_FRONTEND=noninteractive
+          echo "==> Updating system packages"
+          apt-get update
+          apt-get upgrade -y
+
+          echo "==> Installing utilities and Docker"
+          apt-get install -y ca-certificates curl git tar bash-completion docker.io
+
+          echo "==> Installing k3s master"
+          curl -sfL https://get.k3s.io | K3S_TOKEN="${K3sToken}" sh -s - \
+            --write-kubeconfig-mode 644 \
+            --disable traefik
+
+          echo "==> Waiting for k3s to be ready"
+          until kubectl get nodes 2>/dev/null | grep -q " Ready"; do
+            sleep 5
+          done
+
+          echo "==> kubectl completion and aliases"
+          mkdir -p /etc/bash_completion.d
+          kubectl completion bash > /etc/bash_completion.d/kubectl
+          printf '\nalias k=kubectl\n' >> /home/ubuntu/.bashrc
+          printf 'source /etc/bash_completion.d/kubectl\n' >> /home/ubuntu/.bashrc
+
+          echo "==> Kubeconfig for ubuntu (keep API endpoint on localhost)"
+          mkdir -p /home/ubuntu/.kube
+          install -o ubuntu -g ubuntu -m 600 /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+
+          echo "==> Enabling Docker"
+          systemctl enable --now docker
+          usermod -aG docker ubuntu
+
+          echo "==> Cloning app repo"
+          git clone https://github.com/t741712-afk/k8-web-politica.git /home/ubuntu/partido-app
+          chown -R ubuntu:ubuntu /home/ubuntu/partido-app
+          chmod +x /home/ubuntu/partido-app/deploy.sh
+
+          echo "==> Deploying PPF app"
+          /home/ubuntu/partido-app/deploy.sh
+
+          echo "==> Master ready"
+      Tags:
+        - Key: Name
+          Value: k3s-master
+        - Key: Role
+          Value: master
+
+  K3sMasterEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref K3sMaster
+      Tags:
+        - Key: Name
+          Value: k3s-master-eip
+
+  # ── WORKER 1 ──────────────────────────────────────────────────────────────
+
+  K3sWorker1:
+    Type: AWS::EC2::Instance
+    DependsOn: K3sMaster
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestUbuntu2404AmiId
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref K3sPublicSubnet
+      SecurityGroupIds:
+        - !Ref K3sSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            set -euo pipefail
+            exec > >(tee /var/log/k3s-worker-install.log | logger -t k3s-worker) 2>&1
+
+            export DEBIAN_FRONTEND=noninteractive
+            echo "==> Updating system packages"
+            apt-get update
+            apt-get upgrade -y
+
+            echo "==> Installing utilities and Docker"
+            apt-get install -y ca-certificates curl git tar bash-completion docker.io
+
+            echo "==> Enabling Docker"
+            systemctl enable --now docker
+
+            echo "==> Cloning repo and building images"
+            git clone https://github.com/t741712-afk/k8-web-politica.git /home/ubuntu/partido-app
+            docker build -t ppf-backend:latest     /home/ubuntu/partido-app/backend
+            docker build -t ppf-frontend:latest    /home/ubuntu/partido-app/frontend
+            docker build -t ppf-admin:latest       /home/ubuntu/partido-app/admin
+            docker build -t ppf-ai-backend:latest  /home/ubuntu/partido-app/ai-backend
+            docker build -t ppf-ai-frontend:latest /home/ubuntu/partido-app/ai-frontend
+
+            echo "==> Waiting for master API to be reachable"
+            until curl -sk --max-time 5 https://${MasterPrivateIP}:6443/healthz; do
+              echo "Master not ready yet, retrying in 10s..."
+              sleep 10
+            done
+
+            echo "==> Joining k3s cluster as worker-1"
+            curl -sfL https://get.k3s.io | \
+              K3S_URL="https://${MasterPrivateIP}:6443" \
+              K3S_TOKEN="${K3sToken}" \
+              sh -
+
+            echo "==> Importing images into k3s"
+            docker save ppf-backend:latest     | k3s ctr images import -
+            docker save ppf-frontend:latest    | k3s ctr images import -
+            docker save ppf-admin:latest       | k3s ctr images import -
+            docker save ppf-ai-backend:latest  | k3s ctr images import -
+            docker save ppf-ai-frontend:latest | k3s ctr images import -
+
+            echo "==> Worker-1 ready"
+          - MasterPrivateIP: !GetAtt K3sMaster.PrivateIp
+      Tags:
+        - Key: Name
+          Value: k3s-worker-1
+        - Key: Role
+          Value: worker
+
+  K3sWorker1EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref K3sWorker1
+      Tags:
+        - Key: Name
+          Value: k3s-worker-1-eip
+
+  # ── WORKER 2 ──────────────────────────────────────────────────────────────
+
+  K3sWorker2:
+    Type: AWS::EC2::Instance
+    DependsOn: K3sMaster
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref LatestUbuntu2404AmiId
+      KeyName: !Ref KeyPairName
+      SubnetId: !Ref K3sPublicSubnet2
+      SecurityGroupIds:
+        - !Ref K3sSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            set -euo pipefail
+            exec > >(tee /var/log/k3s-worker-install.log | logger -t k3s-worker) 2>&1
+
+            export DEBIAN_FRONTEND=noninteractive
+            echo "==> Updating system packages"
+            apt-get update
+            apt-get upgrade -y
+
+            echo "==> Installing utilities and Docker"
+            apt-get install -y ca-certificates curl git tar bash-completion docker.io
+
+            echo "==> Enabling Docker"
+            systemctl enable --now docker
+
+            echo "==> Cloning repo and building images"
+            git clone https://github.com/t741712-afk/k8-web-politica.git /home/ubuntu/partido-app
+            docker build -t ppf-backend:latest     /home/ubuntu/partido-app/backend
+            docker build -t ppf-frontend:latest    /home/ubuntu/partido-app/frontend
+            docker build -t ppf-admin:latest       /home/ubuntu/partido-app/admin
+            docker build -t ppf-ai-backend:latest  /home/ubuntu/partido-app/ai-backend
+            docker build -t ppf-ai-frontend:latest /home/ubuntu/partido-app/ai-frontend
+
+            echo "==> Waiting for master API to be reachable"
+            until curl -sk --max-time 5 https://${MasterPrivateIP}:6443/healthz; do
+              echo "Master not ready yet, retrying in 10s..."
+              sleep 10
+            done
+
+            echo "==> Joining k3s cluster as worker-2"
+            curl -sfL https://get.k3s.io | \
+              K3S_URL="https://${MasterPrivateIP}:6443" \
+              K3S_TOKEN="${K3sToken}" \
+              sh -
+
+            echo "==> Importing images into k3s"
+            docker save ppf-backend:latest     | k3s ctr images import -
+            docker save ppf-frontend:latest    | k3s ctr images import -
+            docker save ppf-admin:latest       | k3s ctr images import -
+            docker save ppf-ai-backend:latest  | k3s ctr images import -
+            docker save ppf-ai-frontend:latest | k3s ctr images import -
+
+            echo "==> Worker-2 ready"
+          - MasterPrivateIP: !GetAtt K3sMaster.PrivateIp
+      Tags:
+        - Key: Name
+          Value: k3s-worker-2
+        - Key: Role
+          Value: worker
+
+  K3sWorker2EIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref K3sWorker2
+      Tags:
+        - Key: Name
+          Value: k3s-worker-2-eip
+
+  # ── NETWORK LOAD BALANCER ─────────────────────────────────────────────────
+
+  K3sNLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: k3s-nlb
+      Type: network
+      Scheme: internet-facing
+      Subnets:
+        - !Ref K3sPublicSubnet
+        - !Ref K3sPublicSubnet2
+      Tags:
+        - Key: Name
+          Value: k3s-nlb
+
+  # Target group HTTP → NodePort 30080 (todos los nodos)
+  K3sTargetGroupHTTP:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: k3s-tg-http
+      Protocol: TCP
+      Port: 30080
+      VpcId: !Ref K3sVPC
+      TargetType: instance
+      HealthCheckProtocol: TCP
+      HealthCheckPort: "30080"
+      Targets:
+        - Id: !Ref K3sMaster
+        - Id: !Ref K3sWorker1
+        - Id: !Ref K3sWorker2
+      Tags:
+        - Key: Name
+          Value: k3s-tg-http
+
+  # Target group pgAdmin → NodePort 30081
+  K3sTargetGroupPgAdmin:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: k3s-tg-pgadmin
+      Protocol: TCP
+      Port: 30081
+      VpcId: !Ref K3sVPC
+      TargetType: instance
+      HealthCheckProtocol: TCP
+      HealthCheckPort: "30081"
+      Targets:
+        - Id: !Ref K3sMaster
+        - Id: !Ref K3sWorker1
+        - Id: !Ref K3sWorker2
+      Tags:
+        - Key: Name
+          Value: k3s-tg-pgadmin
+
+  # Listener puerto 80 → web + admin
+  K3sListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref K3sNLB
+      Protocol: TCP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref K3sTargetGroupHTTP
+
+  # Listener puerto 5050 → pgAdmin
+  K3sListenerPgAdmin:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref K3sNLB
+      Protocol: TCP
+      Port: 5050
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref K3sTargetGroupPgAdmin
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+  NLBDNSName:
+    Description: DNS del NLB — usa esta URL para acceder
+    Value: !GetAtt K3sNLB.DNSName
+
+  WebURL:
+    Description: URL de la web PPF
+    Value: !Sub "http://${K3sNLB.DNSName}/"
+
+  AdminURL:
+    Description: URL del panel de administración
+    Value: !Sub "http://${K3sNLB.DNSName}/admin"
+
+  pgAdminURL:
+    Description: URL de pgAdmin
+    Value: !Sub "http://${K3sNLB.DNSName}:5050/"
+
+  MasterPublicIP:
+    Description: IP pública del master (para SSH y kubectl)
+    Value: !Ref K3sMasterEIP
+
+  Worker1PublicIP:
+    Description: IP pública del worker-1
+    Value: !Ref K3sWorker1EIP
+
+  Worker2PublicIP:
+    Description: IP pública del worker-2
+    Value: !Ref K3sWorker2EIP
+
+  SSHMaster:
+    Description: SSH al master (Ubuntu)
+    Value: !Sub "ssh -i k3.pem ubuntu@${K3sMasterEIP}"
