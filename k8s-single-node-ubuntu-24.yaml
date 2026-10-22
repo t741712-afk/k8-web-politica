@@ -25,7 +25,7 @@ Parameters:
 
   K3sToken:
     Type: String
-    MinLength: "ppf-k3s-cluster-token-2027"
+    Default: "ppf-k3s-cluster-token-2027"
     NoEcho: true
     Description: Token aleatorio único de al menos 32 caracteres compartido entre master y workers.
 
